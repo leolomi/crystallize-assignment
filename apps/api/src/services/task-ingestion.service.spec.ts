@@ -31,6 +31,7 @@ describe("TaskIngestionService.ingest", () => {
     service = new TaskIngestionService(repo, rowRepo, {
       port: 3000,
       inlineThresholdRows: 1000,
+      ndjsonMaxBytes: 5 * 1024 * 1024,
     });
   });
 

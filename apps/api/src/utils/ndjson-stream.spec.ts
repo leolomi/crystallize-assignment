@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, PayloadTooLargeException } from "@nestjs/common";
 import { z } from "zod";
 
 import { ndjsonStream } from "./ndjson-stream";
@@ -74,5 +74,62 @@ describe("ndjsonStream", () => {
 
   it("yields nothing for an empty body", async () => {
     expect(await collect(ndjsonStream([""], rowSchema))).toEqual([]);
+  });
+
+  it("throws a 413 once cumulative chunk bytes exceed maxBytes", async () => {
+    const line = '{"id":"p1","price":1}\n';
+    const promise = collect(
+      // Second chunk crosses the limit — the first alone fits.
+      ndjsonStream([line, line], rowSchema, { maxBytes: line.length + 5 }),
+    );
+    await expect(promise).rejects.toThrow(PayloadTooLargeException);
+    await expect(promise).rejects.toThrow(
+      `body exceeds the ${line.length + 5}-byte limit`,
+    );
+  });
+
+  it("accepts a body of exactly maxBytes", async () => {
+    const line = '{"id":"p1","price":1}';
+    const rows = await collect(
+      ndjsonStream([line], rowSchema, { maxBytes: line.length }),
+    );
+    expect(rows).toEqual([{ id: "p1", price: 1 }]);
+  });
+
+  it("counts wire bytes, not characters, for string chunks", async () => {
+    const line = '{"id":"héllo","price":1}'; // "é" is 1 char but 2 bytes
+    await expect(
+      collect(ndjsonStream([line], rowSchema, { maxBytes: line.length })),
+    ).rejects.toThrow(PayloadTooLargeException);
+  });
+
+  it("drains the rest of the stream before surfacing the 413 (bun cannot deliver a status over unread bytes)", async () => {
+    const line = '{"id":"p1","price":1}\n'; // 22 bytes
+    const pulled: number[] = [];
+    async function* chunks() {
+      for (let i = 0; i < 4; i++) {
+        pulled.push(i);
+        yield line;
+      }
+    }
+    await expect(
+      collect(ndjsonStream(chunks(), rowSchema, { maxBytes: 30 })),
+    ).rejects.toThrow(PayloadTooLargeException);
+    // The 413 fired on chunk 1, yet the stream was consumed to its end.
+    expect(pulled).toEqual([0, 1, 2, 3]);
+  });
+
+  it("stops draining once the post-error budget is spent", async () => {
+    let pulls = 0;
+    async function* endless() {
+      for (;;) {
+        pulls++;
+        yield '{"id":"p1","price":1}\n';
+      }
+    }
+    await expect(
+      collect(ndjsonStream(endless(), rowSchema, { maxBytes: 30 })),
+    ).rejects.toThrow(PayloadTooLargeException);
+    expect(pulls).toBeLessThan(10); // bounded: the endless stream is abandoned
   });
 });

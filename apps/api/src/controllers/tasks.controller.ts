@@ -11,12 +11,15 @@ import {
   ConflictException,
   Controller,
   Get,
+  Inject,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
 } from "@nestjs/common";
+import type { ConfigType } from "@nestjs/config";
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -25,12 +28,14 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiTags,
 } from "@nestjs/swagger";
 import type { Request } from "express";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
+import { appConfig } from "../config/app.config";
 import {
   CreateCatalogueReindexTaskDto,
   catalogueReindexBodySchema,
@@ -65,6 +70,8 @@ export class TasksController {
     private readonly ingestion: TaskIngestionService,
     private readonly repo: TaskRepository,
     private readonly rowRepo: TaskRowRepository,
+    @Inject(appConfig.KEY)
+    private readonly config: ConfigType<typeof appConfig>,
   ) {}
 
   /**
@@ -92,6 +99,9 @@ export class TasksController {
   @ApiBadRequestResponse({
     description: "Wrong content type, malformed line, or empty job",
   })
+  @ApiPayloadTooLargeResponse({
+    description: "Body larger than NDJSON_MAX_BYTES (default 5 MiB)",
+  })
   createProductPriceUpdate(@Req() req: Request) {
     // Guard, not a branch: an application/json body would already be drained
     // by express's parser, leaving a confusing "empty job" instead of this.
@@ -104,6 +114,7 @@ export class TasksController {
     const payloads = ndjsonStream(
       req,
       taskPayloadSchemas[TaskKind.PRODUCT_PRICE_UPDATE],
+      { maxBytes: this.config.ndjsonMaxBytes },
     );
     return this.ingestion.ingest(TaskKind.PRODUCT_PRICE_UPDATE, payloads);
   }
@@ -131,8 +142,9 @@ export class TasksController {
   @ApiOperation({ summary: "List a task's dead-lettered rows" })
   @ApiOkResponse({ type: DeadLettersDto })
   @ApiNotFoundResponse({ description: "Unknown task id" })
+  @ApiBadRequestResponse({ description: "Malformed task id or query" })
   async deadLetters(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Query() query: Record<string, unknown>,
   ): Promise<DeadLettersDto> {
     const { limit, offset } = parseBody(deadLetterQuerySchema, query ?? {});
@@ -154,9 +166,11 @@ export class TasksController {
   @ApiCreatedResponse({ type: RetryResultDto })
   @ApiNotFoundResponse({ description: "Unknown task id" })
   @ApiBadRequestResponse({
-    description: "Task failed during ingestion and was never fully stored",
+    description:
+      "Malformed task id, or task failed during ingestion and was never " +
+      "fully stored",
   })
-  async retry(@Param("id") id: string): Promise<RetryResultDto> {
+  async retry(@Param("id", ParseUUIDPipe) id: string): Promise<RetryResultDto> {
     const result = await this.repo.retryFailed(id);
     return match(result)
       .with({ outcome: "retried" }, ({ retriedRows }) => ({
@@ -185,7 +199,8 @@ export class TasksController {
   @ApiOperation({ summary: "Task status and progress" })
   @ApiOkResponse({ type: TaskDetailsDto })
   @ApiNotFoundResponse({ description: "Unknown task id" })
-  async get(@Param("id") id: string): Promise<TaskDetailsDto> {
+  @ApiBadRequestResponse({ description: "Malformed task id" })
+  async get(@Param("id", ParseUUIDPipe) id: string): Promise<TaskDetailsDto> {
     const task = await this.repo.getTask(id);
     if (!task) {
       throw new NotFoundException(`task ${id} not found`);

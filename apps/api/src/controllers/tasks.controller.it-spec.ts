@@ -111,6 +111,28 @@ describe("TasksController (integration)", () => {
       expect(failed).toHaveLength(1);
       expect(failed[0].error).toContain("line 2");
     });
+
+    it("413s a body over the byte limit and fails the half-ingested task", async () => {
+      const before = new Set(
+        (await db.select({ id: task.id }).from(task)).map((t) => t.id),
+      );
+
+      // Valid lines throughout — the only violation is the cumulative size.
+      const line = '{"id":"oversized","price":1}\n';
+      const overLimit = Math.ceil((5 * 1024 * 1024) / line.length) + 1;
+      const res = await postNdjsonRaw(
+        "/tasks/product-price-updates",
+        line.repeat(overLimit),
+      );
+      expect(res.status).toBe(413);
+      expect(res.body.message).toContain("byte limit");
+
+      const failed = (
+        await db.select().from(task).where(eq(task.status, TaskStatus.FAILED))
+      ).filter((t) => !before.has(t.id));
+      expect(failed).toHaveLength(1);
+      expect(failed[0].error).toContain("byte limit");
+    });
   });
 
   describe("POST /tasks/catalogue-reindex", () => {
@@ -194,6 +216,13 @@ describe("TasksController (integration)", () => {
       expect(res.status).toBe(404);
     });
 
+    it("400s dead-letters for a malformed (non-UUID) task id", async () => {
+      const res = await getJson(
+        `/tasks/runner-${crypto.randomUUID()}/dead-letters`,
+      );
+      expect(res.status).toBe(400);
+    });
+
     it("replays a failed task: failed rows re-pended, done rows untouched, epoch bumped", async () => {
       const id = await makeFailedTask();
       const res = await postJson(`/tasks/${id}/retry`, undefined);
@@ -246,6 +275,14 @@ describe("TasksController (integration)", () => {
       );
       expect(res.status).toBe(404);
     });
+
+    it("400s a retry for a malformed (non-UUID) task id", async () => {
+      const res = await postJson(
+        `/tasks/runner-${crypto.randomUUID()}/retry`,
+        undefined,
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("GET /tasks/:id", () => {
@@ -291,6 +328,11 @@ describe("TasksController (integration)", () => {
       const res = await getJson(`/tasks/${missing}`);
       expect(res.status).toBe(404);
       expect(res.body.message).toBe(`task ${missing} not found`);
+    });
+
+    it("returns 400 (not 500) for a malformed (non-UUID) task id", async () => {
+      const res = await getJson(`/tasks/runner-${crypto.randomUUID()}`);
+      expect(res.status).toBe(400);
     });
   });
 });
