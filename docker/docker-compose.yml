@@ -1,0 +1,39 @@
+name: bulk-runner
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bulk_runner
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres:18 images moved PGDATA under /var/lib/postgresql/<major>/…
+      # and declare the volume one level up — mount there, not …/data.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # The external search index the catalogue re-index rebuilds — the one system
+  # that can't join the Postgres transaction (the point of the external
+  # processor flavour, see ADR 0005). Only the runner connects to it.
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  mongodata:

@@ -1,0 +1,25 @@
+{
+  "name": "@crystallize/worker",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/dispatcher/main.ts"
+  },
+  "dependencies": {
+    "@crystallize/database": "workspace:*",
+    "@crystallize/mongo": "workspace:*",
+    "@crystallize/shared": "workspace:*",
+    "@crystallize/tasks": "workspace:*",
+    "@nestjs/common": "11.1.28",
+    "@nestjs/config": "4.0.4",
+    "@nestjs/core": "11.1.28",
+    "@nestjs/schedule": "6.1.1",
+    "pino-nestjs": "0.1.3",
+    "reflect-metadata": "0.2.2",
+    "ts-pattern": "5.9.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "drizzle-orm": "0.45.2",
+    "mongodb": "6.21.0"
+  }
+}

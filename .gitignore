@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.ndjson
+dist/
+*.log
+.DS_Store
+.idea/
+assignment.pdf

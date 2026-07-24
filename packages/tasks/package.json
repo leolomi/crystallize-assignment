@@ -1,0 +1,16 @@
+{
+  "name": "@crystallize/tasks",
+  "private": true,
+  "dependencies": {
+    "@crystallize/database": "workspace:*",
+    "@nestjs/common": "11.1.28",
+    "@nestjs/config": "4.0.4",
+    "drizzle-orm": "0.45.2",
+    "ts-pattern": "5.9.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@nestjs/core": "11.1.28"
+  },
+  "module": "src/index.ts"
+}

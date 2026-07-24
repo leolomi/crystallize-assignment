@@ -1,0 +1,12 @@
+{
+  "name": "@crystallize/mongo",
+  "private": true,
+  "dependencies": {
+    "@crystallize/shared": "workspace:*",
+    "@nestjs/common": "11.1.28",
+    "@nestjs/config": "4.0.4",
+    "mongodb": "6.21.0",
+    "zod": "4.4.3"
+  },
+  "module": "src/index.ts"
+}

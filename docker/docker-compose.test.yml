@@ -1,0 +1,31 @@
+# Integration-test overlay: `docker compose -f docker-compose.yml -f docker-compose.test.yml`.
+# Own project name so the test stack never collides with the dev stack, a
+# dynamic host port (docker picks a free one; test-utils/global-setup.ts
+# discovers it), and tmpfs instead of the pgdata volume — nothing persists.
+name: bulk-runner-test
+
+services:
+  postgres:
+    ports: !override
+      - "5432"
+    volumes: !override []
+    tmpfs:
+      # One level up from PGDATA, matching the postgres:18 volume layout.
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bulk_runner"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+
+  mongo:
+    ports: !override
+      - "27017"
+    volumes: !override []
+    tmpfs:
+      - /data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
